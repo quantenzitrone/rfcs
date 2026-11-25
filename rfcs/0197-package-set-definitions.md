@@ -5,7 +5,7 @@ author: quantenzitrone
 co-authors: (find a buddy later to help out with the RFC)
 shepherd-team: (names, to be nominated and accepted by RFC steering committee)
 shepherd-leader: (name to be appointed by RFC steering committee)
-related-issues: https://github.com/NixOS/nixpkgs/pull/482538
+related-issues: https://github.com/NixOS/nixpkgs/pull/482538 https://github.com/NixOS/nixpkgs-vet/pull/206
 ---
 
 # Summary
