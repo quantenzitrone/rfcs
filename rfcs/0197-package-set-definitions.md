@@ -20,7 +20,7 @@ Package sets (definition see [Detailed Design](#detailed-design) e.g.`fishPlugin
   - TBD: other package sets?
 - should move to `pkgs/sets/<setname>` where
   - they _may_ have a directory `pkgs/sets/<setname>/by-name`
-    with a sharded `by-name` like structure
+    with a sharded `by-name` structure like `pkgs/by-name`
     that is checked in the CI with `nixpkgs-vet`
     - packages in this structure will get all the benefits of `pkgs/by-name`
   - they _must_ have files `overrides.nix`, `aliases.nix`, `functions.nix` and `manual-packages.nix`
@@ -31,7 +31,7 @@ Package sets (definition see [Detailed Design](#detailed-design) e.g.`fishPlugin
   - if there exists a file `pkgs/sets/<setname>/packageset.nix`,
     they have to be manually called
     - this would be the case for versioned package sets
-- can be versioned for which they:
+- _may_ be versioned for which they:
   - are called multiple times through `packageset.nix`
     with the different interpreter/compiler/... versions
   - _may_ have a top-level function `<setname>For` that allows convenient creation
@@ -49,7 +49,6 @@ Package sets (definition see [Detailed Design](#detailed-design) e.g.`fishPlugin
   - isolation
   - vetting
 - unify the interface for package sets
-- *your goal here*
 
 # Detailed design
 [design]: #detailed-design
@@ -82,19 +81,20 @@ Package sets are sometimes nested:
 
 ## What should package sets be?
 
-Package sets should be top-level attribute sets. This means: 
+This RFC only handles package sets that are top-level attribute sets. This means:
 - `ocaml-ng.*` will have to move to the top-level
 - `vscode-extensions` will be flattened
-- TODO: which package sets will have to move?
+- ...
+in order to get the benefits of the proposed structure. This is future work.
 
-Package sets should have an attribute name that is lowerCamelCase.
+Top level package sets _must_ have an attribute name that is lowerCamelCase.
 This intentionally does not comply with the package naming conventions
 because package sets are not packages.
 
-Package sets can contain anything like packages (derivations), functions, booleans, strings
+Package sets _may_ contain anything like packages (derivations), functions, booleans, strings
 but all non-packages should be related to the package set.
 
-Package sets will be moved to a new directory `pkgs/sets`. For example:
+Package sets _should_ be moved to a new directory `pkgs/sets`. For example:
 - `pkgs/sets/fishPlugins`
 - `pkgs/sets/haskellPackages`
 - `pkgs/sets/python3Packages`
@@ -112,13 +112,28 @@ and will get the same benefits of `pkgs/by-name`
 like merge bot maintainer merging, scaleability, isolation and vetting.
 The directory `by-name` is not mandatory because not all package sets
 (e.g. completely generated package sets) have packages that fit into this structure.
-It is impossible to have empty folders in git.
+The directory `by-name` _may_ be empty, but will in that case, due to git restriction,
+have to have a marker file (e.g. a `README.md`) preventing the removal of the directory.
 
-Package sets in `pkgs/sets` _must_ have a file `pkgs/sets/<setname>/overrides.nix`
+```
+pkgs/sets/fishPlugins/by-name
+├── as
+│   ├── async-prompt
+│   ... └── package.nix
+├── au
+...
+└── z
+    └── z
+        └── package.nix
+```
+
+If a package set `pkgs/sets` has a `by-name` directory,
+it _must_ have a file `pkgs/sets/<setname>/overrides.nix`
 that is an overlay containing overrides for packages in the `by-name` structure
 like `top-level/all-packages.nix` currently functions as an overlay for `by-name` packages
 This is something we try to keep empty (`final: prev: {}`).
 Most, maybe all, overrides can be inlined in the package.
+If a package set doesn't have a `by-name` directory, is _must not_ have an `overrides.nix` file.
 e.g.
 ```nix
 final: prev: {
@@ -175,12 +190,9 @@ as well as the files `overrides.nix`, `functions.nix`, `aliases.nix` and `manual
 Since the `packageset.nix` is not automatically called
 there is no need to place any more restrictions on this file,
 which allows package sets to be flexible.
-Calling these package sets should be done in a file in `pkgs/top-level` e.g.
-- `top-level/package-sets.nix` → have all package sets in one place
-- `top-level/all-packages.nix` → only have autocalled packages in a separate file → file is small
+Calling these package sets should be done in `pkgs/top-level/package-sets.nix`.
 The `packageset.nix` is especially useful for versioned package set,
 but could also be used for other package sets that need special handling.
-
 
 If a package set does not have a `packageset.nix`,
 it is autocalled by a file in `pkgs/top-level` (e.g. `top-level/package-sets.nix`).
@@ -189,7 +201,7 @@ This would be the case for most simple or auto generated package sets.
 Versioned package sets
 like `python*Packages`, `nextcloud*Packages`
 will have to use the manual calling with `packageset.nix`
-Example `packageset.nix` (I think this would work, but I haven't tested it):
+Example `packageset.nix`:
 ```nix
 {
   lib,
@@ -251,7 +263,7 @@ pkgs
 │   │   │   │   ... └── package.nix
 │   │   │   ├── au
 │   │   │   ...
-│   │   │   └── z_
+│   │   │   └── z
 │   │   │       └── z
 │   │   │           └── package.nix
 │   │   ├── aliases.nix
@@ -388,13 +400,13 @@ Proof-Of-Concept implementation in https://github.com/NixOS/nixpkgs/pull/482538 
   - make sure the `packageset.nix` exists and includes all the required files
   - move the attribute definitons into `pkgs/top-level/package-sets.nix`
   - move aliases into `aliases.nix`
+5. configure nixpkgs-vet to pick up the new package set (TODO: maybe this is automatic)
 6. (optional) move packages to the `by-name` structure where possible
 
 # Drawbacks
 [drawbacks]: #drawbacks
 
 - only allows top level package sets to benefit from `by-name` benefits
-- *your drawback here*
 
 # Alternatives
 [alternatives]: #alternatives
@@ -534,4 +546,6 @@ pkgs
 # Future work
 [future]: #future-work
 
-What future work, if any, would be implied or impacted by this feature without being directly part of the work?
+- Handle nested package sets:
+  - Should they, and can they all get moved or flattened into top level?
+  - Possible futute extension to the `pkgs/sets` structure?
