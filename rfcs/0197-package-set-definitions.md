@@ -399,6 +399,17 @@ Proof-Of-Concept implementation in https://github.com/NixOS/nixpkgs/pull/482538 
 5. configure nixpkgs-vet to pick up the new package set (TODO: maybe this is automatic)
 6. (optional) move packages to the `by-name` structure where possible
 
+# Rough Implementation Roadmap
+
+- Polish the `nixpkgs-vet` PR, merge it, release it, and update it in nixpkgs.
+- Initialize the new directory structure for package sets with autocalling infrastructure
+  READMEs and the sort.
+- Migrate low hanging fruit package sets (e.g. `fishPlugins`) to the new structure and fix
+  any `nixpkgs-vet` bugs or shortcomings that might pop up.
+- Add new rules to `nixpkgs-merge-bot` to allow merging for by-name packages in package sets.
+- Try migrating more complicated package sets potentially in coordination with
+  its ecosystem maintainers.
+
 # Drawbacks
 [drawbacks]: #drawbacks
 
