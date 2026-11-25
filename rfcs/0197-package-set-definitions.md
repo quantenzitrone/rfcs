@@ -210,19 +210,15 @@ Example `packageset.nix`:
 }:
 python:
 lib.makeScope newScope (
-  self:
-  lib.fix (
-    lib.pipe (x: { inherit python; }) [
-      (lib.extends (
-        self: super:
-        lib.optionalAttrs (lib.pathExists ./by-name) (
-          import ../../top-level/by-name-overlay.nix ./by-name self super
-        )
-      ))
-      (lib.extends (self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix self super)))
-      (lib.extends (import ./functions.nix))
-      (lib.extends (import ./manual-packages.nix))
-      (lib.extends (import ./overrides.nix))
+  lib.foldl' (lib.flip lib.extends) (x: { inherit python; }) (
+    (lib.optionals (lib.pathExists ./by-name) [
+      (import ../../top-level/by-name-overlay.nix ./by-name)
+      (import ./overrides.nix)
+    ])
+    ++ [
+      (self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix self super))
+      (import ./functions.nix)
+      (import ./manual-packages.nix)
     ]
   )
 )
@@ -320,25 +316,25 @@ lib.pipe ../sets [
   # autocall
   (lib.mapAttrs (
     name: _:
-    lib.pipe (self: { }) [
-      # autocall all sharded by name packages
-      (lib.extends (
-        self: super:
-        optionalAttrs (lib.pathExists ../sets/${name}/by-name) (
-          import ./by-name-overlay.nix ../sets/${name}/by-name self super
-        )
+    lib.pipe [
+      (lib.foldl' (lib.flip lib.extends) (self: { }) (
+        # autocall all sharded by name packages
+        (lib.optionals (lib.pathExists ./by-name) [
+          (import ./by-name-overlay.nix ../sets/${name}/by-name)
+          (import ../sets/${name}/overrides.nix)
+        ])
+        ++ [
+          # overlay aliases
+          (
+            setself: setsuper:
+            lib.optionalAttrs self.config.allowAliases (import (../sets/${name}/aliases.nix) setself setsuper)
+          )
+          # overlay functions
+          (import (../sets/${name}/functions.nix))
+          # overlay manual packages
+          (import (../sets/${name}/manual-packages.nix))
+        ]
       ))
-      # overlay aliases
-      (lib.extends (
-        setself: setsuper:
-        lib.optionalAttrs self.config.allowAliases (import (../sets/${name}/aliases.nix) setself setsuper)
-      ))
-      # overlay functions
-      (lib.extends (import (../sets/${name}/functions.nix)))
-      # overlay manual packages
-      (lib.extends (import (../sets/${name}/manual-packages.nix)))
-      # overlay overrides
-      (lib.extends (import (../sets/${name}/overrides.nix)))
       # make a new scope and recurse into it
       (lib.makeScope self.newScope)
       lib.recurseIntoAttrs
