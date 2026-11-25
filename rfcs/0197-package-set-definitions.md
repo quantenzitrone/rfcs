@@ -545,3 +545,17 @@ pkgs
 - Handle nested package sets:
   - Should they, and can they all get moved or flattened into top level?
   - Possible futute extension to the `pkgs/sets` structure?
+  - package sets:
+    - these could probably be moved to the top level:
+      - `emacsPackages.*Packages`
+      - `ocaml-ng.ocamlPackages*`
+      - `haskell.packages.{,native-bignum.}*`
+      - `chickenPackages.chickenEggs`
+    - `vscode-extensions` could probably be flattened
+    - `ocamlPackages*.janeStreet` could maybe be merged into `ocamlPackages*`
+    - `kdePackages.{sources,gear,framework,plasma}`?
+    - `vimPlugins.nvim-treesitter-{,legacy-}parsers`?
+    - `linuxKernels.**`?
+    - `luaPackages.luaLib`?
+    - `androidenv.**`?
+    - `nginxModules.*`?
