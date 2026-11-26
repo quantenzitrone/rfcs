@@ -35,9 +35,9 @@ as well as eventually get `nixpkgs-merge-bot` merging.
 # Detailed design
 [design]: #detailed-design
 
-## What are package sets?
+## What are package sets currently?
 
-Basically attribute sets of packages, functions and other package sets.
+Attribute sets of packages, functions and other package sets.
 
 Package sets are often largely auto generated:
 - `emacsPackages` from ELPA, MELPA, NONGNU, ...
@@ -61,159 +61,168 @@ Package sets are sometimes nested:
 - `kdePackages.{gear,frameworks,plasma}`
 - ...
 
-## What should package sets be?
+## Which packages sets does this RFC handle?
 
 This RFC only handles package sets that are top-level attribute sets. This means:
 - `ocaml-ng.*` will have to move to the top-level
 - `vscode-extensions` will be flattened
 - ...
-in order to get the benefits of the proposed structure. This is future work.
 
-Top level package sets _must_ have an attribute name that is lowerCamelCase.
-This intentionally does not comply with the package naming conventions
-because package sets are not packages.
+in order to get the benefits of the proposed structure. This is future work however.
 
-Package sets _may_ contain anything like packages (derivations), functions, booleans, strings
-but all non-packages should be related to the package set.
+## Design
 
-Package sets _should_ be moved to a new directory `pkgs/sets`. For example:
-- `pkgs/sets/fishPlugins`
-- `pkgs/sets/haskellPackages`
-- `pkgs/sets/python3Packages`
-- ...
-This means package sets will have a "canonical name",
-which will mostly also be the attribute name
-with a few exceptions for versioned package sets that don't have a default version.
-- e.g. `nextcloud*Packages` will be in `pkgs/sets/nextcloudPackages`,
-  but there is no `pkgs.nextcloudPackages`
+1. Top level package sets _MUST_ have an attribute name that is lowerCamelCase.\
+   This intentionally does not comply with the package naming conventions
+   because package sets are not packages.
 
-Package sets in `pkgs/sets` _may_ have a directory `pkgs/sets/<setname>/by-name`
-which is a sharded directory structure for isolated package definitions as defined by RFC 140.
-This sharded structure _must_ be checked in the CI by `nixpkgs-vet`
-and will get the same benefits of `pkgs/by-name`
-like merge bot maintainer merging, scaleability, isolation and vetting.
-The directory `by-name` is not mandatory because not all package sets
-(e.g. completely generated package sets) have packages that fit into this structure.
-The directory `by-name` _may_ be empty, but will in that case, due to git restrictions,
-have to have a marker file (e.g. a `README.md`) preventing the removal of the directory.
+2. Top level package sets _MUST_ contain packages (derivations)
+   and _MAY_ contain anything 
+   like functions, booleans, strings or even other small package sets.\
+   All non-packages _SHOULD_ be related to the package set.
 
-```
-pkgs/sets/fishPlugins/by-name
-├── as
-│   ├── async-prompt
-│   ... └── package.nix
-├── au
-...
-└── z
-    └── z
-        └── package.nix
-```
+3. Top level package sets _SHOULD_ be moved to a new directory `pkgs/sets`. For example:
+   - `pkgs/sets/fishPlugins`
+   - `pkgs/sets/haskellPackages`
+   - `pkgs/sets/python3Packages`
+   - ...
 
-Package sets in `pkgs/sets` _must_ have a file `pkgs/sets/<setname>/functions.nix`
-that is an overlay containing definitons of functions
-like `buildFishPlugin`, `buildPythonPackage`.
-e.g.
-```nix
-final: prev: {
-  buildFooBarPackage = import ./buildFooBarPackage final;
-}
-```
+   This means package sets will have a "canonical name",
+   which will mostly also be the attribute name
+   with a few exceptions for versioned package sets that don't have a default version.
+   E.g. `nextcloud*Packages` will be in `pkgs/sets/nextcloudPackages`,
+     but there is no `pkgs.nextcloudPackages`.
 
-Package sets in `pkgs/sets` _must_ have a file `pkgs/sets/<setname>/aliases.nix`
-that is an overlay containing aliases for packages in package sets behind `optionalAttrs config.allowAliases`
-like `top-level/aliases.nix` does for the top-level.
-e.g.
-```nix
-final: prev:
-let
-  inherit (final) lib;
-in
-{
-  # (warnAlias would have to move to lib for this)
-  fooo = lib.warnAlias "'fooo' has been renamed to 'foo'" final.foo;
-  awawa_1 = builtins.throw "'awawa_1' has been deprecated, please use a newer version of 'awawa' like 'awawa_2'";
-}
-```
+4. Package sets in `pkgs/sets` _MAY_ have a directory `pkgs/sets/<setname>/by-name`
+   which is a sharded directory structure for isolated package definitions
+   as defined by RFC 140.\
+   This sharded structure _MUST_ be checked in the CI by `nixpkgs-vet`
+   and will get the same benefits of `pkgs/by-name`
+   like merge bot maintainer merging, scaleability, isolation and vetting.\
+   The directory `by-name` is not mandatory because not all package sets
+   (e.g. completely generated package sets) have packages that fit into this structure.\
+   The directory `by-name` _MAY_ be empty,
+   but _MUST_ in that case, due to git restrictions,
+   have a marker file (e.g. a `README.md`) preventing the removal of the directory.\
+   e.g.
+   ```
+   pkgs/sets/fishPlugins/by-name
+   ├── as
+   │   ├── async-prompt
+   │   ... └── package.nix
+   ├── au
+   ...
+   └── z
+       └── z
+           └── package.nix
+   ```
 
-Package sets in `pkgs/sets` _must_ have a file `pkgs/sets/<setname>/manual-packages.nix`
-that is an overlay containing derivations outside the `by-name` structure
-- **auto generated package sets** will put their stuff here
-- the migration of (large) package sets can initially keep the `by-name` structure empty and
-  only fill it gradually, simplifying the migration of large package sets
+5. Package sets in `pkgs/sets` _MUST_ have a file `pkgs/sets/<setname>/functions.nix`
+   that is an overlay containing definitions of functions.
+   like `buildFishPlugin`, `buildPythonPackage`.\
+   e.g.
+   ```nix
+   final: prev: {
+     buildFooBarPackage = import ./buildFooBarPackage final;
+   }
+   ```
 
-Package sets in `pkgs/sets` _may_ have a file `pkgs/sets/<setname>/packageset.nix`
-which results in them not being called automatically.
-The `packageset.nix` _must_ handle the calling of the `by-name` structure
-(which should be easy by using `pkgs/top-level/by-name-overlay.nix`)
-as well as the files `functions.nix`, `aliases.nix` and `manual-packages.nix`.
-Since the `packageset.nix` is not automatically called
-there is no need to place any more restrictions on this file,
-which allows package sets to be flexible.
-Calling these package sets should be done in `pkgs/top-level/package-sets.nix`.
-The `packageset.nix` is especially useful for versioned package set,
-but could also be used for other package sets that need special handling.
+6. Package sets in `pkgs/sets` _MUST_ have a file `pkgs/sets/<setname>/aliases.nix`
+   that is an overlay containing aliases for packages in package sets
+   behind `optionalAttrs config.allowAliases`
+   like `top-level/aliases.nix` does for the top-level.\
+   e.g.
+   ```nix
+   final: prev:
+   let
+     inherit (final) lib;
+   in
+   {
+     # (warnAlias would have to move to lib for this)
+     fooo = lib.warnAlias "'fooo' has been renamed to 'foo'" final.foo;
+     awawa_1 = builtins.throw "'awawa_1' has been deprecated, please use a newer version of 'awawa' like 'awawa_2'";
+   }
+   ```
 
-If a package set does not have a `packageset.nix`,
-it is autocalled by a file in `pkgs/top-level` (e.g. `top-level/package-sets.nix`).
-This would be the case for most simple or auto generated package sets.
+7. Package sets in `pkgs/sets` _MUST_ have a file `pkgs/sets/<setname>/manual-packages.nix`
+   that is an overlay containing derivations outside the `by-name` structure.
+   - generated package sets can put their stuff there
+   - the migration of (large) package sets can initially
+     keep the `by-name` structure empty and only fill it gradually,
+     simplifying the migration of large package sets.
 
-Both the `packageset.nix` (for manually called set)
-and the `top-level/package-sets.nix` (for autocalled sets) files
-_must_ assert, that each overlay (functions, by-name, manual-packages, aliases)
-doesn't shadow any attributes from the previous overlays.
-Checks like these already exists for `top-level/all-packages.nix` overriding
-packages in `pkgs/by-name` or aliases overriding existing packages.
+8. There _MUST_ be a new file `pkgs/top-level/package-sets.nix`,
+   that handles automatic calling of most package sets.\
+   It _MUST_ automatically call the `by-name` directory and overlay the
+   `functions.nix`, `manual-packages.nix` and `aliases.nix`.\
+   It MUST assert that each overlay doesn't shadow any attributes
+   from the previous overlays.
+   Assertions like this are already done in nixpkgs, for example for checking
+   that `pkgs/top-level/all-packages.nix` doesn't shadow any attributes in `pkgs/by-name`
+   or that aliases don't shadow any previously defined non-alias attributes.\
+   For an example see [below](#package-sets-nix-example).
 
-Versioned package sets
-like `python*Packages`, `nextcloud*Packages`
-will have to use the manual calling with `packageset.nix`
-Example `packageset.nix`:
-```nix
-# TODO: add required non-overriding checks
-{
-  lib,
-  newScope,
-  config,
-}:
-python:
-lib.makeScope newScope (
-  lib.foldl' (lib.flip lib.extends) (x: { inherit python; }) (
-    (lib.optionals (lib.pathExists ./by-name) [
-      (import ../../top-level/by-name-overlay.nix ./by-name)
-    ])
-    ++ [
-      (self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix self super))
-      (import ./functions.nix)
-      (import ./manual-packages.nix)
-    ]
-  )
-)
-```
+9. Package sets in `pkgs/sets` _MAY_ have a file `pkgs/sets/<setname>/packageset.nix`
+   which _MUST_ result in them not being called automatically in `pkgs/top-level/package-sets.nix`.\
+   The `packageset.nix` _MUST_ handle the calling of the `by-name` structure
+   (which should be easy by using `pkgs/top-level/by-name-overlay.nix`)
+   as well as the files `functions.nix`, `aliases.nix` and `manual-packages.nix`.\
+   The `packageset.nix`, like `pkgs/top-level/package-sets.nix`, _MUST_ assert that
+   each overlay doesn't shadow any attributes from the previous overlays.\
+   The file `packageset.nix` is not automatically called, so
+   there is no need to place any more restrictions on this file,
+   which allows package sets to be flexible.
+   The `packageset.nix` is especially useful for versioned package set,
+   but could also be used for other package sets that need special handling.\
+   e.g.
+   ```nix
+   # TODO: add required non-overriding checks
+   {
+     lib,
+     newScope,
+     config,
+   }:
+   python:
+   lib.makeScope newScope (
+     lib.foldl' (lib.flip lib.extends) (x: { inherit python; }) (
+       (lib.optionals (lib.pathExists ./by-name) [
+         (import ../../top-level/by-name-overlay.nix ./by-name)
+       ])
+       ++ [
+         (self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix self super))
+         (import ./functions.nix)
+         (import ./manual-packages.nix)
+       ]
+     )
+   )
+   ```
 
-Versioned package sets _may_ define a top-level function wrapping this e.g.
-```nix
-{
-  pythonPackagesFor = callPackage ../sets/pythonPackages/packageset.nix {};
-}
-```
+10. Package sets _MAY_ define a top-level function
+    wrapping the `packageset.nix` e.g.
+    ```nix
+    {
+      pythonPackagesFor = callPackage ../sets/pythonPackages/packageset.nix {};
+    }
+    ```
+    this function is useful for creating different versions of the package set.
 
-Versioned package sets _may_ be in `passthru` of the package that they depend on e.g.
-```nix
-{
-  lib,
-  stdenv,
-  # ...
-  pythonPackgesFor,
-  # ...
-}:
-stdenv.mkDerivation (finalAttrs: {
-  # ...
-  passthru.pkgs = pythonPackagesFor finalAttrs.finalPackage;
-  # ...
-})
-```
+11. Versioned package sets _MAY_ be in `passthru` of the package that they depend on e.g.
+    ```nix
+    {
+      lib,
+      stdenv,
+      # ...
+      pythonPackgesFor,
+      # ...
+    }:
+    stdenv.mkDerivation (finalAttrs: {
+      # ...
+      passthru.pkgs = pythonPackagesFor finalAttrs.finalPackage;
+      # ...
+    })
+    ```
 
-## The full directory layout could look like
+### The full directory layout could look like
 
 ```
 pkgs
@@ -262,7 +271,8 @@ pkgs
     └── package-sets.nix ← calls all package sets in pkgs/sets
 ```
 
-## `pkgs/top-level/package-sets.nix` could look like
+### `pkgs/top-level/package-sets.nix` could look like
+[package-sets.nix example]: (#package-sets-nix-example)
 
 ```nix
 self: super:
