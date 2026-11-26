@@ -23,8 +23,8 @@ Package sets (definition see [Detailed Design](#detailed-design) e.g.`fishPlugin
     with a sharded `by-name` structure like `pkgs/by-name`
     that is checked in the CI with `nixpkgs-vet`
     - packages in this structure will get all the benefits of `pkgs/by-name`
-  - they _must_ have files `overrides.nix`, `aliases.nix`, `functions.nix` and `manual-packages.nix`
-    containing aliases, overrides, functions and packages outside the `by-name` structure
+  - they _must_ have files `aliases.nix`, `functions.nix` and `manual-packages.nix`
+    containing aliases, functions and packages outside the `by-name` structure
   - are optionally are autocalled
     - this would be the case for manually defined package sets
       and auto generated package sets
@@ -107,12 +107,12 @@ with a few exceptions for versioned package sets that don't have a default versi
 
 Package sets in `pkgs/sets` _may_ have a directory `pkgs/sets/<setname>/by-name`
 which is a sharded directory structure for isolated package definitions as defined by RFC 140.
-This sharded structure is checked in the CI by `nixpkgs-vet`
+This sharded structure _must_ be checked in the CI by `nixpkgs-vet`
 and will get the same benefits of `pkgs/by-name`
 like merge bot maintainer merging, scaleability, isolation and vetting.
 The directory `by-name` is not mandatory because not all package sets
 (e.g. completely generated package sets) have packages that fit into this structure.
-The directory `by-name` _may_ be empty, but will in that case, due to git restriction,
+The directory `by-name` _may_ be empty, but will in that case, due to git restrictions,
 have to have a marker file (e.g. a `README.md`) preventing the removal of the directory.
 
 ```
@@ -125,29 +125,6 @@ pkgs/sets/fishPlugins/by-name
 └── z
     └── z
         └── package.nix
-```
-
-If a package set `pkgs/sets` has a `by-name` directory,
-it _must_ have a file `pkgs/sets/<setname>/overrides.nix`
-that is an overlay containing overrides for packages in the `by-name` structure
-like `top-level/all-packages.nix` currently functions as an overlay for `by-name` packages
-This is something we try to keep empty (`final: prev: {}`).
-Most, maybe all, overrides can be inlined in the package.
-If a package set doesn't have a `by-name` directory, is _must not_ have an `overrides.nix` file.
-e.g.
-```nix
-final: prev: {
-  # inlineability debateable since it complicates overriding
-  fooFull = final.foo.override {
-    withMeow = true;
-    withBeep = true;
-  };
-
-  # useless inlineable override
-  bar = final.callPackage by-name/bar/package.nix {
-    foo = final.fooFull;
-  };
-}
 ```
 
 Package sets in `pkgs/sets` _must_ have a file `pkgs/sets/<setname>/functions.nix`
@@ -178,7 +155,7 @@ in
 
 Package sets in `pkgs/sets` _must_ have a file `pkgs/sets/<setname>/manual-packages.nix`
 that is an overlay containing derivations outside the `by-name` structure
-- **auto generated package sets** don't need to abuse the `overrides.nix`
+- **auto generated package sets** will put their stuff here
 - the migration of (large) package sets can initially keep the `by-name` structure empty and
   only fill it gradually, simplifying the migration of large package sets
 
@@ -186,7 +163,7 @@ Package sets in `pkgs/sets` _may_ have a file `pkgs/sets/<setname>/packageset.ni
 which results in them not being called automatically.
 The `packageset.nix` _must_ handle the calling of the `by-name` structure
 (which should be easy by using `pkgs/top-level/by-name-overlay.nix`)
-as well as the files `overrides.nix`, `functions.nix`, `aliases.nix` and `manual-packages.nix`.
+as well as the files `functions.nix`, `aliases.nix` and `manual-packages.nix`.
 Since the `packageset.nix` is not automatically called
 there is no need to place any more restrictions on this file,
 which allows package sets to be flexible.
@@ -198,11 +175,19 @@ If a package set does not have a `packageset.nix`,
 it is autocalled by a file in `pkgs/top-level` (e.g. `top-level/package-sets.nix`).
 This would be the case for most simple or auto generated package sets.
 
+Both the `packageset.nix` (for manually called set)
+and the `top-level/package-sets.nix` (for autocalled sets) files
+_must_ assert, that each overlay (functions, by-name, manual-packages, aliases)
+doesn't shadow any attributes from the previous overlays.
+Checks like these already exists for `top-level/all-packages.nix` overriding
+packages in `pkgs/by-name` or aliases overriding existing packages.
+
 Versioned package sets
 like `python*Packages`, `nextcloud*Packages`
 will have to use the manual calling with `packageset.nix`
 Example `packageset.nix`:
 ```nix
+# TODO: add required non-overriding checks
 {
   lib,
   newScope,
@@ -213,7 +198,6 @@ lib.makeScope newScope (
   lib.foldl' (lib.flip lib.extends) (x: { inherit python; }) (
     (lib.optionals (lib.pathExists ./by-name) [
       (import ../../top-level/by-name-overlay.nix ./by-name)
-      (import ./overrides.nix)
     ])
     ++ [
       (self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix self super))
@@ -265,8 +249,7 @@ pkgs
 │   │   ├── aliases.nix
 │   │   ├── functions.nix
 │   │   ├── manual-packages.nix
-│   │   ├── mkFishPlugin.nix (could also be inlined in functions.nix)
-│   │   └── overrides.nix
+│   │   └── mkFishPlugin.nix (could also be inlined in functions.nix)
 │   │
 │   ├── python3Packages
 │   │   ├── by-name
@@ -288,7 +271,6 @@ pkgs
 │   │   ├── aliases.nix
 │   │   ├── functions.nix
 │   │   ├── manual-packages.nix
-│   │   ├── overrides.nix
 │   │   └── packageset.nix ← entrypoint for versioned python3Packages
 │   ...
 └── top-level
@@ -307,6 +289,7 @@ let
   lib = import ../../lib;
 in
 # autocalled sets
+# TODO: add required non-overriding checks
 lib.pipe ../sets [
   builtins.readDir
   # filter out non directories like README.md
@@ -321,7 +304,6 @@ lib.pipe ../sets [
         # autocall all sharded by name packages
         (lib.optionals (lib.pathExists ./by-name) [
           (import ./by-name-overlay.nix ../sets/${name}/by-name)
-          (import ../sets/${name}/overrides.nix)
         ])
         ++ [
           # overlay aliases
