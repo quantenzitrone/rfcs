@@ -26,6 +26,8 @@ Moved packages sets will have a common interface
 and their `by-name` directories will be checked in CI
 as well as eventually get `nixpkgs-merge-bot` merging.
 
+Also see Proof-Of-Concept implementation in https://github.com/NixOS/nixpkgs/pull/482538
+
 # Motivation
 [motivation]: #motivation
 
@@ -343,8 +345,6 @@ lib.pipe ../sets [
   # ...
 }
 ```
-
-Proof-Of-Concept implementation in https://github.com/NixOS/nixpkgs/pull/482538 (outdated)
 
 # Examples and Interactions
 [examples-and-interactions]: #examples-and-interactions
