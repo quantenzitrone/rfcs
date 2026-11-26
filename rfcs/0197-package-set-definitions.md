@@ -11,33 +11,15 @@ related-issues: https://github.com/NixOS/nixpkgs/pull/482538 https://github.com/
 # Summary
 [summary]: #summary
 
-Package sets (definition see [Detailed Design](#detailed-design) e.g.`fishPlugins`, `python3Packages`)
+See [detailed design](#detailed-design) for details.
 
-- should be top-level attribute sets that contain
-  - packages
-  - functions helping these packages
-  - variables like `version`, `withFoo`, ...
-  - TBD: other package sets?
-- should move to `pkgs/sets/<setname>` where
-  - they _may_ have a directory `pkgs/sets/<setname>/by-name`
-    with a sharded `by-name` structure like `pkgs/by-name`
-    that is checked in the CI with `nixpkgs-vet`
-    - packages in this structure will get all the benefits of `pkgs/by-name`
-  - they _must_ have files `aliases.nix`, `functions.nix` and `manual-packages.nix`
-    containing aliases, functions and packages outside the `by-name` structure
-  - are optionally are autocalled
-    - this would be the case for manually defined package sets
-      and auto generated package sets
-  - if there exists a file `pkgs/sets/<setname>/packageset.nix`,
-    they have to be manually called
-    - this would be the case for versioned package sets
-- _may_ be versioned for which they:
-  - are called multiple times through `packageset.nix`
-    with the different interpreter/compiler/... versions
-  - _may_ have a top-level function `<setname>For` that allows convenient creation
-    of new versions
-  - _may_ be in `passthru` of the package that they depend on
-    - this can be archieved by using the `<setname>For` function
+Top level package sets (e.g.`fishPlugins`, `python3Packages`)
+get a new place in nixpkgs with a `by-name` directory, 
+their own `aliases` file and several other requirements.
+
+Moved packages sets will have a common interface
+and their `by-name` directories will be checked in CI
+as well as eventually get `nixpkgs-merge-bot` merging.
 
 # Motivation
 [motivation]: #motivation
