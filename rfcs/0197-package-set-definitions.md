@@ -183,25 +183,77 @@ in order to get the benefits of the proposed structure. This is future work howe
    but could also be used for other package sets that need special handling.\
    e.g.
    ```nix
-   # TODO: add required non-overriding checks
    {
      lib,
      newScope,
-     config,
    }:
-   python:
-   lib.makeScope newScope (
-     lib.foldl' (lib.flip lib.extends) (x: { inherit python; }) (
-       (lib.optionals (lib.pathExists ./by-name) [
-         (import ../../top-level/by-name-overlay.nix ./by-name)
-       ])
-       ++ [
-         (self: super: lib.optionalAttrs config.allowAliases (import ./aliases.nix self super))
-         (import ./functions.nix)
-         (import ./manual-packages.nix)
-       ]
-     )
-   )
+   foo:
+   let
+     dirname = "fooPackages";
+   in
+   lib.pipe (x: { inherit foo; }) [
+     # overlay all autocalled by-name packages
+     (lib.extends (
+       self: super:
+       let
+         res = import ../../top-level/by-name-overlay.nix ./by-name self super;
+         conflictingAttrs = lib.intersectAttrs res super;
+       in
+       assert lib.assertMsg (conflictingAttrs == { }) (
+         "The following attributes were defined both in `pkgs/sets/${dirname}/by-name` and elsewhere: "
+         + "${lib.concatStringsSep ", " (lib.attrNames conflictingAttrs)}"
+       );
+       res
+     ))
+
+     # overlay functions
+     (lib.extends (
+       self: super:
+       let
+         res = import ./functions.nix self super;
+         conflictingAttrs = lib.intersectAttrs res super;
+       in
+       assert lib.assertMsg (conflictingAttrs == { }) (
+         "The following attributes were defined both in `pkgs/sets/${dirname}/functions.nix` and elsewhere, "
+         + "most likely in `pkgs/sets/${dirname}/by-name/`: "
+         + (lib.concatStringsSep ", " (lib.attrNames conflictingAttrs))
+       );
+       res
+     ))
+
+     # overlay manual packages
+     (lib.extends (
+       self: super:
+       let
+         res = import ./manual-packages.nix self super;
+         conflictingAttrs = lib.intersectAttrs res super;
+       in
+       assert lib.assertMsg (conflictingAttrs == { }) (
+         "The following attributes were defined both in `pkgs/sets/${dirname}/manual-packages.nix` and elsewhere, "
+         + "most likely in `pkgs/sets/${dirname}/by-name/` or `pkgs/sets/${dirname}/functions.nix`: "
+         + (lib.concatStringsSep ", " (lib.attrNames conflictingAttrs))
+       );
+       res
+     ))
+
+     # overlay aliases
+     (lib.extends (
+       self: super:
+       let
+         res = import ./aliases.nix self super;
+         conflictingAttrs = builtins.intersectAttrs res super;
+       in
+       assert lib.assertMsg (conflictingAttrs == { }) (
+         "The following attributes were defined both in `pkgs/sets/${dirname}/aliases.nix` and elsewhere, "
+         + "most likely in `pkgs/sets/${dirname}/by-name/`, `pkgs/sets/${dirname}/functions.nix` or `pkgs/sets/${dirname}/manual-packages.nix`: "
+         + (lib.concatStringsSep ", " (lib.attrNames conflictingAttrs))
+       );
+       (lib.optionalAttrs config.allowAliases res)
+     ))
+
+     # make a new scope
+     (lib.makeScope self.newScope)
+   ]
    ```
 
 10. Package sets _MAY_ define a top-level function
@@ -286,63 +338,101 @@ self: super:
 let
   # Because of Nix's import-value cache, importing lib is free
   lib = import ../../lib;
+
+  inherit (self)
+    config
+    ;
 in
+
 # autocalled sets
-# TODO: add required non-overriding checks
 lib.pipe ../sets [
   builtins.readDir
   # filter out non directories like README.md
   (lib.filterAttrs (_: value: value == "directory"))
+
   # filter out manually called package sets
   (lib.filterAttrs (name: _: !(lib.pathExists ../sets/${name}/packageset.nix)))
+
   # autocall
   (lib.mapAttrs (
     name: _:
-    lib.pipe [
-      (lib.foldl' (lib.flip lib.extends) (self: { }) (
-        # autocall all sharded by name packages
-        (lib.optionals (lib.pathExists ./by-name) [
-          (import ./by-name-overlay.nix ../sets/${name}/by-name)
-        ])
-        ++ [
-          # overlay aliases
-          (
-            setself: setsuper:
-            lib.optionalAttrs self.config.allowAliases (import (../sets/${name}/aliases.nix) setself setsuper)
-          )
-          # overlay functions
-          (import (../sets/${name}/functions.nix))
-          # overlay manual packages
-          (import (../sets/${name}/manual-packages.nix))
-        ]
+    lib.pipe (self: { }) [
+
+      # overlay all autocalled by-name packages
+      (lib.extends (
+        self: super:
+        lib.optionalAttrs (lib.pathExists ../sets/${name}/by-name) (
+          import ./by-name-overlay.nix ../sets/${name}/by-name self super
+        )
       ))
+
+      # overlay functions
+      (lib.extends (
+        self: super:
+        let
+          res = import ../sets/${name}/functions.nix self super;
+          conflictingAttrs = lib.intersectAttrs res super;
+        in
+        assert lib.assertMsg (conflictingAttrs == { }) (
+          "The following attributes were defined both in `pkgs/sets/${name}/functions.nix` and elsewhere, "
+          + "most likely in `pkgs/sets/${name}/by-name/`: "
+          + (lib.concatStringsSep ", " (lib.attrNames conflictingAttrs))
+        );
+        res
+      ))
+
+      # overlay manual packages
+      (lib.extends (
+        self: super:
+        let
+          res = import ../sets/${name}/manual-packages.nix self super;
+          conflictingAttrs = builtins.intersectAttrs res super;
+        in
+        assert lib.assertMsg (conflictingAttrs == { }) (
+          "The following attributes were defined both in `pkgs/sets/${name}/manual-packages.nix` and elsewhere, "
+          + "most likely in `pkgs/sets/${name}/by-name/` or `pkgs/sets/${name}/functions.nix`: "
+          + (lib.concatStringsSep ", " (lib.attrNames conflictingAttrs))
+        );
+        res
+      ))
+
+      # overlay aliases
+      (lib.extends (
+        self: super:
+        let
+          res = import ../sets/${name}/aliases.nix self super;
+          conflictingAttrs = builtins.intersectAttrs res super;
+        in
+        assert lib.assertMsg (conflictingAttrs == { }) (
+          "The following attributes were defined both in `pkgs/sets/${name}/aliases.nix` and elsewhere, "
+          + "most likely in `pkgs/sets/${name}/by-name/`, `pkgs/sets/${name}/functions.nix` or `pkgs/sets/${name}/manual-packages.nix`: "
+          + (lib.concatStringsSep ", " (lib.attrNames conflictingAttrs))
+        );
+        (lib.optionalAttrs config.allowAliases res)
+      ))
+
       # make a new scope and recurse into it
       (lib.makeScope self.newScope)
       lib.recurseIntoAttrs
     ]
   ))
 ]
+
 # manually called sets
 // {
   # python
   # we only recurse into the newest 2 python versions
   python3PackagesFor = self.callPackage ../sets/python3Packages/packageset.nix { };
-  python311Packages = self.python3PackagesFor self.python311;
-  python312Packages = self.python3PackagesFor self.python312;
-  python313Packages = lib.recurseIntoAttrs (self.python3PackagesFor self.python313);
-  python314Packages = lib.recurseIntoAttrs (self.python3PackagesFor self.python314);
-  python3Packages = self.python3PackagesFor self.python314;
-  pypy311Packages = self.python3PackagesFor self.pypy311;
-  pypy312Packages = self.python3PackagesFor self.pypy312;
-  pypy3Packages = pypy312Packages;
-
-  # nextcloud
-  nextcloudPackagesFor = self.callPackage ../sets/nextcloudPackages/packageset.nix { };
-  nextcloud31Packages = self.nextcloudPackagesFor "31"; # idk if it works like this, this is an example
-  nextcloud32Packages = self.nextcloudPackagesFor "32";
-  nextcloud33Packages = self.nextcloudPackagesFor "33";
-
-  # ...
+  python311Packages = self.python311.pkgs;
+  python312Packages = self.python312.pkgs;
+  python313Packages = lib.recurseIntoAttrs (self.python313.pkgs);
+  python314Packages = lib.recurseIntoAttrs (self.python314.pkgs);
+  python315Packages = self.python315.pkgs;
+  python316Packages = self.python316.pkgs;
+  python3Packages = self.python314Packages;
+  pypy310Packages = self.pypy310.pkgs;
+  pypy311Packages = self.pypy311.pkgs;
+  pypy3Packages = self.pypy3.pkgs;
 }
 ```
 
